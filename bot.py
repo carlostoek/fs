@@ -39,6 +39,9 @@ OUTPUT_DIR = BASE_DIR / "output"
 # Default model (same as main.py)
 DEFAULT_MODEL = "ddvinh1/inswapper:25bdae46f2713138640b6e8c04dc4ca18625ce95b1863936b053eee42d9ba6db"
 
+# Timer duration for collecting album messages (seconds)
+ALBUM_COLLECT_DELAY = 1.0
+
 
 async def cmd_cambiar_source(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /cambiar_source command."""
@@ -187,8 +190,15 @@ async def process_single_photo(update: Update, context: ContextTypes.DEFAULT_TYP
         shutil.rmtree(temp_input, ignore_errors=True)
 
 
+# In-memory store for album messages being collected
+# Key: (chat_id, media_group_id) -> list of Message objects
+_album_cache: dict[tuple, list] = {}
+# Lock to prevent race conditions on the cache
+_album_lock = asyncio.Lock()
+
+
 async def handle_album(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle incoming album (1-10 photos)."""
+    """Handle incoming album (1-10 photos) using timer-based collection."""
     user_id = str(update.effective_user.id)
     session = sessions.get_session(user_id)
 
@@ -211,37 +221,62 @@ async def handle_album(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Get media group ID and fetch all messages in the album
+    # Get media group ID
     media_group_id = update.message.media_group_id
     if not media_group_id:
         # Not actually an album, treat as single photo
         await handle_photo(update, context)
         return
 
-    # Fetch all messages in this album via Bot API
-    bot = context.bot
     chat_id = update.effective_chat.id
+    cache_key = (chat_id, media_group_id)
 
-    # Use do_api_request to call getMediaGroup endpoint
-    result = await bot.do_api_request(
-        "getMediaGroup",
-        {"chat_id": chat_id, "message_id": media_group_id}
-    )
-    messages = [Message.de_json(msg, bot) for msg in result]
+    # Add this message to the cache
+    async with _album_lock:
+        if cache_key not in _album_cache:
+            _album_cache[cache_key] = []
+            # First message in this group — start a timer to wait for more
+            asyncio.create_task(_process_album_after_delay(context, user_id, session, source_path, cache_key, chat_id, media_group_id))
+        _album_cache[cache_key].append(update.message)
+
+    # Acknowledgement handled by the delayed task
+
+
+async def _process_album_after_delay(
+    context: ContextTypes.DEFAULT_TYPE,
+    user_id: str,
+    session: dict,
+    source_path: Path,
+    cache_key: tuple,
+    chat_id: int,
+    media_group_id: str
+):
+    """Wait for album collection timer, then process the album."""
+    await asyncio.sleep(ALBUM_COLLECT_DELAY)
+
+    # Gather all collected messages
+    async with _album_lock:
+        messages = _album_cache.pop(cache_key, [])
 
     if not messages:
-        await update.message.reply_text("⚠️ No se pudieron leer las fotos del álbum.")
         return
 
-    file_ids = [msg.photo[-1].file_id for msg in messages]
+    # Use the first message as reference for sending status
+    first_msg = messages[0]
+    file_ids = [msg.photo[-1].file_id for msg in messages if msg.photo]
     count = len(file_ids)
 
+    if count == 0:
+        await first_msg.reply_text("⚠️ No se encontraron fotos en el álbum.")
+        return
+
     # Send "processing" message
-    status_msg = await update.message.reply_text(
+    status_msg = await first_msg.reply_text(
         f"🔄 Procesando {count} imagen{'es' if count > 1 else ''}..."
     )
 
     # Download photos to temp dir
+    bot = context.bot
     temp_input = Path(tempfile.mkdtemp(prefix="fs_input_"))
     temp_output = temp_input / "output"
 
@@ -285,7 +320,7 @@ async def handle_album(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 with open(p, "rb") as f:
                     media.append(InputMediaPhoto(f.read()))
 
-            await update.message.reply_media_group(media)
+            await first_msg.reply_media_group(media)
 
         else:
             await update.message.reply_text(
