@@ -303,10 +303,7 @@ async def handle_album(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         # Cleanup
         download.cleanup_temp_files(downloaded)
-        for p in temp_input.glob("*"):
-            if p.is_file():
-                p.unlink()
-        temp_input.rmdir()
+        shutil.rmtree(temp_input, ignore_errors=True)
 
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
