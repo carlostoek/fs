@@ -4,6 +4,7 @@ Telegram bot interface for face swap batch processing.
 """
 
 import os
+import shutil
 import asyncio
 import tempfile
 from pathlib import Path
@@ -183,10 +184,7 @@ async def process_single_photo(update: Update, context: ContextTypes.DEFAULT_TYP
 
     finally:
         download.cleanup_temp_files([path])
-        for p in temp_input.glob("*"):
-            if p.is_file():
-                p.unlink()
-        temp_input.rmdir()
+        shutil.rmtree(temp_input, ignore_errors=True)
 
 
 async def handle_album(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -223,9 +221,13 @@ async def handle_album(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Fetch all messages in this album via Bot API
     bot = context.bot
     chat_id = update.effective_chat.id
-    messages = []
-    async for msg in bot.getMediaGroup(chat_id, media_group_id):
-        messages.append(msg)
+
+    # Use do_api_request to call getMediaGroup endpoint
+    result = await bot.do_api_request(
+        "getMediaGroup",
+        {"chat_id": chat_id, "message_id": media_group_id}
+    )
+    messages = [Message.de_json(msg, bot) for msg in result]
 
     if not messages:
         await update.message.reply_text("⚠️ No se pudieron leer las fotos del álbum.")
