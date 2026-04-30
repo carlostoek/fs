@@ -3,7 +3,13 @@
 Face Swap Batch - Main entry point.
 
 Usage:
-    # Local (CPU fallback - sin face swap real)
+    # Interactive (guided setup)
+    python main.py --setup
+
+    # With saved configuration (press Enter to use last values)
+    python main.py
+
+    # Local (CPU fallback)
     python main.py --source foto.jpg --input input/ --output output/
 
     # Con Replicate API (recomendado para resultados reales)
@@ -18,6 +24,7 @@ from pathlib import Path
 from src import FaceDetector, process_batch
 from src.face_swap import FaceSwapper
 from src.replicate_swap import process_batch_replicate
+from src.config import load_config, interactive_config, save_config
 
 
 def parse_args():
@@ -25,21 +32,26 @@ def parse_args():
         description="Face Swap Batch - Swap faces in images by batch"
     )
     parser.add_argument(
+        "--setup", "-S",
+        action="store_true",
+        help="Run interactive configuration wizard"
+    )
+    parser.add_argument(
         "--source", "-s",
         type=Path,
-        required=True,
+        default=None,
         help="Source image path (face to swap from)"
     )
     parser.add_argument(
         "--input", "-i",
         type=Path,
-        required=True,
+        default=None,
         help="Input directory with target images"
     )
     parser.add_argument(
         "--output", "-o",
         type=Path,
-        required=True,
+        default=None,
         help="Output directory for processed images"
     )
     parser.add_argument(
@@ -86,13 +98,29 @@ def get_providers(use_gpu: bool):
 def main():
     args = parse_args()
 
+    # Interactive setup mode
+    if args.setup:
+        config = interactive_config()
+        print("\nConfiguration saved!")
+        return
+
+    # Load saved config
+    config = load_config()
+
+    # Resolve paths - use CLI args or fall back to saved config
+    source_path = args.source or (Path(config["source"]) if config.get("source") else None)
+    input_dir = args.input or (Path(config["input_dir"]) if config.get("input_dir") else None)
+    output_dir = args.output or (Path(config["output_dir"]) if config.get("output_dir") else None)
+
     # Validate paths
-    if not args.source.exists():
-        print(f"Error: Source image not found: {args.source}")
+    if not source_path or not source_path.exists():
+        print(f"Error: Source image not found: {source_path}")
+        print("Run with --setup to configure, or provide --source")
         sys.exit(1)
 
-    if not args.input.exists() or not args.input.is_dir():
-        print(f"Error: Input directory not found: {args.input}")
+    if not input_dir or not input_dir.exists() or not input_dir.is_dir():
+        print(f"Error: Input directory not found: {input_dir}")
+        print("Run with --setup to configure, or provide --input")
         sys.exit(1)
 
     # Check for API token (优先idad a Replicate)
@@ -102,14 +130,14 @@ def main():
         # Use Replicate API
         print(f"\n=== Using Replicate API (Cloud) ===")
         print(f"Model: codeplugtech/face-swap")
-        print(f"  Source: {args.source}")
-        print(f"  Input:  {args.input}")
-        print(f"  Output: {args.output}")
+        print(f"  Source: {source_path}")
+        print(f"  Input:  {input_dir}")
+        print(f"  Output: {output_dir}")
 
         stats = process_batch_replicate(
-            source_path=str(args.source),
-            input_dir=args.input,
-            output_dir=args.output,
+            source_path=str(source_path),
+            input_dir=input_dir,
+            output_dir=output_dir,
             api_token=api_token,
             batch_size=args.batch_size
         )
@@ -150,9 +178,9 @@ def main():
         print(f"\nProcessing batch...")
 
         stats = process_batch(
-            source_path=args.source,
-            input_dir=args.input,
-            output_dir=args.output,
+            source_path=source_path,
+            input_dir=input_dir,
+            output_dir=output_dir,
             detector=detector,
             swapper=swapper,
             batch_size=args.batch_size
