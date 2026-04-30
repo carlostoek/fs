@@ -67,6 +67,12 @@ def parse_args():
         help="Replicate API token (for cloud processing)"
     )
     parser.add_argument(
+        "--replicate-model", "-r",
+        type=str,
+        default=None,
+        help="Replicate model identifier (e.g., ddvinh1/inswapper:hash)"
+    )
+    parser.add_argument(
         "--model", "-m",
         type=Path,
         default=None,
@@ -126,10 +132,13 @@ def main():
     # Check for API token (优先idad a CLI > config > env)
     api_token = args.api_token or config.get("api_token") or os.environ.get("REPLICATE_API_TOKEN")
 
+    # Get model from config or CLI override
+    model_name = args.replicate_model or config.get("model", "ddvinh1/inswapper:25bdae46f2713138640b6e8c04dc4ca18625ce95b1863936b053eee42d9ba6db")
+
     if api_token:
         # Use Replicate API
         print(f"\n=== Using Replicate API (Cloud) ===")
-        print(f"Model: codeplugtech/face-swap")
+        print(f"Model: {model_name}")
         print(f"  Source: {source_path}")
         print(f"  Input:  {input_dir}")
         print(f"  Output: {output_dir}")
@@ -139,6 +148,7 @@ def main():
             input_dir=input_dir,
             output_dir=output_dir,
             api_token=api_token,
+            model=model_name,
             batch_size=args.batch_size
         )
 

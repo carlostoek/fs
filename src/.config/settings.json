@@ -2,5 +2,5 @@
   "source": "IMG_20260429_191208_188.jpg",
   "input_dir": "input",
   "output_dir": "output",
-  "api_token": "
+  "model": "ddvinh1/inswapper:25bdae46f2713138640b6e8c04dc4ca18625ce95b1863936b053eee42d9ba6db"
 }

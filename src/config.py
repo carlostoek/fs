@@ -18,7 +18,8 @@ def load_config() -> dict:
         "source": "",
         "input_dir": "input",
         "output_dir": "output",
-        "api_token": ""
+        "api_token": "",
+        "model": "ddvinh1/inswapper:25bdae46f2713138640b6e8c04dc4ca18625ce95b1863936b053eee42d9ba6db"
     }
 
 
@@ -53,7 +54,7 @@ def interactive_config() -> dict:
     get_input("Source image path", config.get("source", ""), config, "source")
     get_input("Input directory", config.get("input_dir", ""), config, "input_dir")
     get_input("Output directory", config.get("output_dir", ""), config, "output_dir")
-    get_input("Replicate API Token", config.get("api_token", ""), config, "api_token")
+    get_input("Replicate Model", config.get("model", ""), config, "model")
 
     save_config(config)
 

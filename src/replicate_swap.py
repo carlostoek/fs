@@ -13,16 +13,16 @@ import replicate
 class ReplicateFaceSwapper:
     """Face swapper using Replicate API."""
 
-    MODEL = "codeplugtech/face-swap:278a81e7ebb22db98bcba54de985d22cc1abeead2754eb1f2af717247be69b34"
-
-    def __init__(self, api_token: str):
+    def __init__(self, api_token: str, model: str = "ddvinh1/inswapper:25bdae46f2713138640b6e8c04dc4ca18625ce95b1863936b053eee42d9ba6db"):
         """
         Initialize with Replicate API token.
 
         Args:
             api_token: Replicate API token
+            model: Model identifier (default: ddvinh1/inswapper)
         """
         self.client = replicate.Client(api_token=api_token)
+        self.model = model
 
     def swap_face(
         self,
@@ -41,10 +41,10 @@ class ReplicateFaceSwapper:
         """
         # Use replicate.run() as shown in docs
         output = replicate.run(
-            self.MODEL,
+            self.model,
             input={
-                "swap_image": open(source_path, "rb"),
-                "input_image": open(target_path, "rb")
+                "source_image": open(source_path, "rb"),
+                "target_image": open(target_path, "rb")
             }
         )
 
@@ -67,10 +67,10 @@ class ReplicateFaceSwapper:
             Tuple of (url, file_content)
         """
         output = replicate.run(
-            self.MODEL,
+            self.model,
             input={
-                "swap_image": source_url,
-                "input_image": target_url
+                "source_image": source_url,
+                "target_image": target_url
             }
         )
 
@@ -82,6 +82,7 @@ def process_batch_replicate(
     input_dir: Path,
     output_dir: Path,
     api_token: str,
+    model: str = "ddvinh1/inswapper:25bdae46f2713138640b6e8c04dc4ca18625ce95b1863936b053eee42d9ba6db",
     batch_size: int = 10
 ) -> dict:
     """
@@ -114,12 +115,12 @@ def process_batch_replicate(
         return {"total": 0, "processed": 0, "failed": 0, "time": 0, "cost": 0}
 
     print(f"Found {total} images to process")
-    print(f"Using Replicate API: codeplugtech/face-swap")
+    print(f"Using Replicate API: {model}")
     print("-" * 40)
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    swapper = ReplicateFaceSwapper(api_token)
+    swapper = ReplicateFaceSwapper(api_token, model)
 
     stats = {"total": total, "processed": 0, "failed": 0, "time": 0, "cost": 0}
     start_time = time.time()
