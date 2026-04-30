@@ -39,7 +39,7 @@ class FaceSwapper:
         """Load ONNX model."""
         self.session = ort.InferenceSession(
             str(model_path),
-            providers=[self.providers]
+            providers=self.providers
         )
         print(f"Loaded face swapper: {model_path.name}")
 

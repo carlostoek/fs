@@ -123,8 +123,8 @@ def main():
         print("Run with --setup to configure, or provide --input")
         sys.exit(1)
 
-    # Check for API token (优先idad a Replicate)
-    api_token = args.api_token or os.environ.get("REPLICATE_API_TOKEN")
+    # Check for API token (优先idad a CLI > config > env)
+    api_token = args.api_token or config.get("api_token") or os.environ.get("REPLICATE_API_TOKEN")
 
     if api_token:
         # Use Replicate API

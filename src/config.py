@@ -17,7 +17,8 @@ def load_config() -> dict:
     return {
         "source": "",
         "input_dir": "input",
-        "output_dir": "output"
+        "output_dir": "output",
+        "api_token": ""
     }
 
 
@@ -52,6 +53,7 @@ def interactive_config() -> dict:
     get_input("Source image path", config.get("source", ""), config, "source")
     get_input("Input directory", config.get("input_dir", ""), config, "input_dir")
     get_input("Output directory", config.get("output_dir", ""), config, "output_dir")
+    get_input("Replicate API Token", config.get("api_token", ""), config, "api_token")
 
     save_config(config)
 

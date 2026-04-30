@@ -1,5 +1,6 @@
 {
   "source": "IMG_20260429_191208_188.jpg",
   "input_dir": "input",
-  "output_dir": "output"
+  "output_dir": "output",
+  "api_token": "r8_HfEogQomMJmHqIFKOSwrrlR3cFecqy94EpNmO"
 }
