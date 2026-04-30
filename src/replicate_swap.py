@@ -43,8 +43,8 @@ class ReplicateFaceSwapper:
         output = replicate.run(
             self.model,
             input={
-                "source_image": open(source_path, "rb"),
-                "target_image": open(target_path, "rb")
+                "source_img": open(source_path, "rb"),
+                "target_img": open(target_path, "rb")
             }
         )
 
@@ -69,8 +69,8 @@ class ReplicateFaceSwapper:
         output = replicate.run(
             self.model,
             input={
-                "source_image": source_url,
-                "target_image": target_url
+                "source_img": source_url,
+                "target_img": target_url
             }
         )
 
