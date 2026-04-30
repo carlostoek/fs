@@ -93,6 +93,14 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     session = sessions.get_session(user_id)
 
+    # Detect album vs single photo via media_group_id
+    is_album = update.message.media_group_id is not None
+
+    # If it's an album and we're in normal mode, delegate to album handler
+    if is_album and session["state"] != sessions.SessionState.AWAITING_SOURCE:
+        await handle_album(update, context)
+        return
+
     # Get the largest photo
     photo = update.message.photo[-1]
     file_id = photo.file_id
@@ -111,16 +119,85 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("✅ Source actualizado!")
 
     else:
-        # Should not happen — album handler catches normal photos
+        # Single photo with source already set - process it
+        await process_single_photo(update, context)
+        return
+
+
+async def process_single_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Process a single photo when source is already configured."""
+    user_id = str(update.effective_user.id)
+    session = sessions.get_session(user_id)
+
+    photo = update.message.photo[-1]
+    file_id = photo.file_id
+
+    source_path = Path(session["source_path"])
+    if not source_path.exists():
         await update.message.reply_text(
-            "Usa /cambiar_source para cambiar el source, o envía un álbum."
+            "❌ Source no encontrado. Usa /cambiar_source para configurar de nuevo."
         )
+        return
+
+    status_msg = await update.message.reply_text("🔄 Procesando imagen...")
+
+    temp_input = Path(tempfile.mkdtemp(prefix="fs_input_"))
+    temp_output = temp_input / "output"
+
+    try:
+        path = await download.download_telegram_photo(context.bot, file_id, temp_input)
+
+        if API_TOKEN:
+            stats = process_batch_replicate(
+                source_path=str(source_path),
+                input_dir=temp_input,
+                output_dir=temp_output,
+                api_token=API_TOKEN,
+                model=DEFAULT_MODEL,
+                batch_size=1
+            )
+        else:
+            providers = ["CPUExecutionProvider"]
+            detector = FaceDetector(providers=providers)
+            swapper = FaceSwapper(providers=providers)
+            stats = process_batch(
+                source_path=source_path,
+                input_dir=temp_input,
+                output_dir=temp_output,
+                detector=detector,
+                swapper=swapper,
+                batch_size=1
+            )
+
+        processed = list(temp_output.glob("*"))
+        if processed:
+            with open(processed[0], "rb") as f:
+                await update.message.reply_photo(photo=f.read())
+        else:
+            await update.message.reply_text("⚠️ No se pudo procesar la imagen.")
+
+        await status_msg.edit_text(f"✅ Procesada {stats['processed']} imagen")
+
+    except Exception as e:
+        await status_msg.edit_text(f"❌ Error: {str(e)}")
+
+    finally:
+        download.cleanup_temp_files([path])
+        for p in temp_input.glob("*"):
+            if p.is_file():
+                p.unlink()
+        temp_input.rmdir()
 
 
 async def handle_album(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle incoming album (1-10 photos)."""
     user_id = str(update.effective_user.id)
     session = sessions.get_session(user_id)
+
+    # If awaiting source, delegate to photo handler
+    if session["state"] == sessions.SessionState.AWAITING_SOURCE:
+        await handle_photo(update, context)
+        return
 
     # Check if source is set
     if not session["source_path"]:
@@ -136,9 +213,25 @@ async def handle_album(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Get media from album
-    media_group = update.message.media_group
-    file_ids = [item.file_id for item in media_group]
+    # Get media group ID and fetch all messages in the album
+    media_group_id = update.message.media_group_id
+    if not media_group_id:
+        # Not actually an album, treat as single photo
+        await handle_photo(update, context)
+        return
+
+    # Fetch all messages in this album via Bot API
+    bot = context.bot
+    chat_id = update.effective_chat.id
+    messages = []
+    async for msg in bot.getMediaGroup(chat_id, media_group_id):
+        messages.append(msg)
+
+    if not messages:
+        await update.message.reply_text("⚠️ No se pudieron leer las fotos del álbum.")
+        return
+
+    file_ids = [msg.photo[-1].file_id for msg in messages]
     count = len(file_ids)
 
     # Send "processing" message
@@ -147,7 +240,6 @@ async def handle_album(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     # Download photos to temp dir
-    bot = context.bot
     temp_input = Path(tempfile.mkdtemp(prefix="fs_input_"))
     temp_output = temp_input / "output"
 
@@ -256,10 +348,10 @@ def main():
     app.add_handler(CommandHandler("ayuda", cmd_ayuda))
     app.add_handler(CommandHandler("estado", cmd_estado))
 
-    # Album handler (catches photo albums)
+    # Photo handler - all photos (album vs single detected internally)
     app.add_handler(MessageHandler(
         filters.PHOTO,
-        handle_album,
+        handle_photo,
         block=False
     ))
 
@@ -271,7 +363,7 @@ def main():
     ))
 
     print("Bot ready. Press Ctrl+C to stop.")
-    app.run_polling(allowed_updates=Update.ALL)
+    app.run_polling()
 
 
 if __name__ == "__main__":
